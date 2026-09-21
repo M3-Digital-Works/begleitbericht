@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1e1e1e">
+  <title>Begleitbericht Wiedemann</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon-192.png">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <a class="logo" href="#/"><b>WIEDEMANN</b> <span>TRANSPORTE</span></a>
+    <span class="pill" id="offline" hidden>Offline</span>
+    <span class="title">Begleitbericht</span>
+  </header>
+  <main id="app"></main>
+  <footer class="foot"><span id="version"></span></footer>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <noscript><p style="padding:16px">Bitte JavaScript aktivieren.</p></noscript>
+  <script src="vendor/pdf-lib.min.js"></script>
+  <script src="pdf.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
