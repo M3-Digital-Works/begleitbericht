@@ -1,7 +1,7 @@
 {
-  "name": "Begleitbericht Wiedemann",
-  "short_name": "Begleitbericht",
-  "description": "Begleitbericht für Schwertransportbegleitung – funktioniert auch ohne Internet.",
+  "name": "Transportbegleitung Wiedemann",
+  "short_name": "Begleitschein",
+  "description": "Transportbegleitung – funktioniert auch ohne Internet.",
   "lang": "de",
   "start_url": "./",
   "scope": "./",

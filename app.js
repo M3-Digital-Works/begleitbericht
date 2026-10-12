@@ -1,66 +1,71 @@
-/* Begleitbericht Wiedemann – Offline-App.
+/* Transportbegleitung Wiedemann – Offline-App.
  * Berichte liegen im localStorage des Tablets und werden bei jeder Eingabe automatisch gespeichert.
  * "Senden" erzeugt das PDF im Gerät und übergibt es über das Android-Teilen-Menü (z. B. an Gmail). */
 (function () {
   "use strict";
 
   const CONFIG = {
-    title: "Begleitbericht Wiedemann",
+    title: "Transportbegleitung Wiedemann",
     recipient: "david.groeschl@gmail.com", // nur für den Fallback (mailto:), Teilen-Menü kann keinen Empfänger vorgeben
-    version: "1.0",
+    version: "2.0",
   };
   const KEY = "bb:report:";
-  const REQUIRED = { best_nr: "Best. Nr.", transportdatum: "Transportdatum", fahrer_unterschrift_name: "Name des LKW-Fahrers" };
+  const REQUIRED = {
+    firma: "Firma / Auftraggeber",
+    lkw_kennzeichen: "LKW-Kennzeichen",
+    von_datum: "Datum",
+    unterschrift_transportfahrer: "Unterschrift Transport-Fahrer",
+  };
+  const PLATE_PREFIX = "SHA-WT";
+  const KM_COLS = [["lkw", "LKW"], ["bf2", "BF2"], ["bf3", "BF3"], ["bf4", "BF4"]];
+  const KM_ROWS = [["anfang", "Anfang"], ["ende", "Ende"], ["gesamt", "Gesamt-km"]];
 
   // ------------------------------------------------------------------ Formular-Beschreibung
   // w = Breite auf dem Tablet (von 12), n = Breite auf schmalen Displays
   const f = (name, label, o) => Object.assign({ name, label, type: "text", w: 6, n: 12, cap: "words" }, o);
-  const address = (p) => [
-    f(p + "_firma", "Firma", { w: 12 }),
-    f(p + "_strasse", "Straße", { w: 6 }),
-    f(p + "_plz", "PLZ", { w: 2, n: 5, cap: "none", mode: "numeric" }),
-    f(p + "_ort", "Ort", { w: 4, n: 7 }),
-  ];
-  const vehicles = [1, 2, 3].flatMap((i) => [
-    f("kennzeichen_" + i, `Fahrzeug ${i} – Kennzeichen`, { cap: "characters" }),
-    f("fahrer_" + i, `Fahrzeug ${i} – Fahrer`),
-  ]);
 
   const SECTIONS = [
-    { fields: [f("best_nr", "Best. Nr.", { cap: "none" }), f("transportdatum", "Transportdatum", { type: "date" })] },
-    { title: "Fahrzeuge & Fahrer", fields: vehicles },
     {
-      title: "Begleitart",
-      checks: [["hipo", "HIPO"], ["bf4", "BF4"], ["bf3", "BF-3"], ["pausch", "pausch"], ["zus_bf", "zusätzl. BF"], ["beifahrer", "Beifahrer"]],
-    },
-    { title: "Auftraggeber", fields: address("ag") },
-    { title: "Auftragsdaten", groups: [{ sub: "Übernahmeort", fields: address("uo") }, { sub: "Zielort", fields: address("zo") }] },
-    {
-      title: "Ladung & Fahrzeuge",
       fields: [
-        f("ladegut", "Ladegut", { w: 12 }),
-        f("lkw_1", "LKW-Nr. – 1. Fahrzeug", { cap: "characters" }),
-        f("auflieger_1", "Auflieger-Nr. – 1. Fahrzeug", { cap: "characters" }),
-        f("lkw_2", "LKW-Nr. – 2. Fahrzeug", { cap: "characters" }),
-        f("auflieger_2", "Auflieger-Nr. – 2. Fahrzeug", { cap: "characters" }),
-        f("genehm_nr", "Genehm.-Nr.", { cap: "none" }),
+        f("firma", "Firma / Auftraggeber", { w: 12 }),
+        f("lkw_kennzeichen", "LKW mit amtl. Kennzeichen-Nr.", { w: 12, cap: "characters" }),
       ],
     },
     {
-      title: "Abrechnungsdaten",
-      fields: [
-        f("km_anfang", "km-Stand Anfang", { w: 4, n: 6, cap: "none", mode: "numeric" }),
-        f("km_ende", "km-Stand Ende", { w: 4, n: 6, cap: "none", mode: "numeric" }),
-        f("km_gesamt", "km gesamt (automatisch)", { w: 4, n: 12, type: "computed" }),
-        f("sonderfahrten", "Sonderfahrten (km)", { cap: "none", mode: "numeric", n: 6 }),
-        f("hoehe", "Festgestellte Höhe (m)", { cap: "none", mode: "decimal", n: 6 }),
+      title: "Begleitfahrzeuge · amtl. Kennzeichen-Nr.",
+      fields: [1, 2, 3].map((i) =>
+        f(`begleit_kennzeichen_${i}`, `Begleitfahrzeug ${i}`, { w: 4, n: 12, type: "plated", prefix: PLATE_PREFIX, cap: "characters" })
+      ),
+    },
+    { title: "Art der Begleitung", checks: [["transportbegleitung", "Transportbegleitung"]] },
+    {
+      title: "Strecke",
+      groups: [
+        { sub: "Von", fields: [
+          f("von_ort", "Von", { w: 12 }),
+          f("von_datum", "Datum", { type: "date" }),
+          f("von_uhrzeit", "Uhrzeit", { type: "time" }),
+        ] },
+        { sub: "Nach", fields: [
+          f("nach_ort", "Nach", { w: 12 }),
+          f("nach_datum", "Datum", { type: "date" }),
+          f("nach_uhrzeit", "Uhrzeit", { type: "time" }),
+        ] },
       ],
     },
+    { title: "Begleit-Kilometer", table: true },
     {
-      title: "Bemerkung & Unterschrift",
+      title: "Bemerkung & Auftragsnr.",
       fields: [
         f("bemerkung", "Bemerkung", { w: 12, type: "textarea", cap: "sentences" }),
-        f("fahrer_unterschrift_name", "Unterschrift LKW-Fahrer – Name in Druckbuchstaben", { w: 12 }),
+        f("auftragsnr", "Auftragsnr.", { w: 6, cap: "none" }),
+      ],
+    },
+    {
+      title: "Unterschriften",
+      fields: [
+        f("unterschrift_begleitfahrer", "Unterschrift Begleitfahrer (Name)"),
+        f("unterschrift_transportfahrer", "Unterschrift Transport-Fahrer (Name)"),
       ],
     },
   ];
@@ -113,7 +118,7 @@
   }
   function newReport() {
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-    const r = { id, createdAt: Date.now(), updatedAt: Date.now(), sharedAt: null, data: { transportdatum: today() } };
+    const r = { id, createdAt: Date.now(), updatedAt: Date.now(), sharedAt: null, data: { von_datum: today() } };
     saveReport(r);
     return r;
   }
@@ -132,8 +137,8 @@
     const rows = reports.map((r) => {
       const d = r.data || {};
       const st = statusOf(r);
-      const title = clean(d.best_nr) ? `Best. Nr. ${esc(d.best_nr)}` : "Ohne Best. Nr.";
-      const sub = [fmtDate(d.transportdatum), clean(d.fahrer_1), clean(d.kennzeichen_1)].filter(Boolean).map(esc).join(" · ");
+      const title = clean(d.auftragsnr) ? `Auftrag ${esc(d.auftragsnr)}` : (clean(d.firma) ? esc(d.firma) : "Ohne Auftragsnr.");
+      const sub = [fmtDate(d.von_datum), clean(d.lkw_kennzeichen), clean(d.von_ort)].filter(Boolean).map(esc).join(" · ");
       const when = st.key === "draft" ? `bearbeitet ${fmtDateTime(r.updatedAt)}` : `geteilt ${fmtDateTime(r.sharedAt)}`;
       return `<a class="item" href="#/r/${r.id}"><span class="item-main"><b>${title}</b><span>${sub || "&nbsp;"}</span><small>${when}</small></span><span class="chip ${st.key}">${st.text}</span></a>`;
     }).join("");
@@ -162,13 +167,26 @@
     const style = `style="--w:${fd.w};--n:${fd.n}"`;
     let input;
     if (fd.type === "textarea") {
-      input = `<textarea name="${fd.name}" rows="6" maxlength="${MAX_REMARK}" autocapitalize="${fd.cap}">${esc(v)}</textarea><span class="count" id="count"></span>`;
-    } else if (fd.type === "computed") {
-      input = `<input name="${fd.name}" value="${esc(v)}" readonly tabindex="-1">`;
+      input = `<textarea name="${fd.name}" rows="5" maxlength="${MAX_REMARK}" autocapitalize="${fd.cap}">${esc(v)}</textarea><span class="count" id="count"></span>`;
+    } else if (fd.type === "plated") {
+      input = `<div class="platewrap"><span class="plate">${esc(fd.prefix)}</span><input type="text" name="${fd.name}" value="${esc(v)}" autocomplete="off" spellcheck="false" autocapitalize="${fd.cap}"></div>`;
     } else {
-      input = `<input type="${fd.type}" name="${fd.name}" value="${esc(v)}" autocomplete="off" spellcheck="false" autocapitalize="${fd.cap}"${fd.mode ? ` inputmode="${fd.mode}"` : ""}>`;
+      input = `<input type="${fd.type}" name="${fd.name}" value="${esc(v)}" autocomplete="off" spellcheck="false" autocapitalize="${fd.cap || "off"}"${fd.mode ? ` inputmode="${fd.mode}"` : ""}>`;
     }
-    return `<label class="field${fd.type === "computed" ? " computed" : ""}" ${style}><span class="lbl">${esc(fd.label)}</span>${input}</label>`;
+    return `<label class="field" ${style}><span class="lbl">${esc(fd.label)}</span>${input}</label>`;
+  }
+
+  function kmTableHtml(data) {
+    const cell = (row, col, readonly) => {
+      const name = `km_${row}_${col}`;
+      const v = data[name] == null ? "" : data[name];
+      return `<td><input type="text" inputmode="numeric" autocomplete="off" name="${name}" value="${esc(v)}"${readonly ? " readonly tabindex=\"-1\" class=\"computed\"" : ""}></td>`;
+    };
+    const head = KM_COLS.map(([, lab]) => `<th>${esc(lab)}</th>`).join("");
+    const rows = KM_ROWS.map(([rk, rlab]) =>
+      `<tr><th class="rowlab">${esc(rlab)}</th>${KM_COLS.map(([ck]) => cell(rk, ck, rk === "gesamt")).join("")}</tr>`
+    ).join("");
+    return `<div class="kmtable"><table><thead><tr><th></th>${head}</tr></thead><tbody>${rows}</tbody></table></div>`;
   }
 
   function showForm(id) {
@@ -181,12 +199,13 @@
       let inner = "";
       if (s.fields) inner = `<div class="grid">${s.fields.map((fd) => fieldHtml(fd, r.data)).join("")}</div>`;
       if (s.checks) {
-        inner = `<div class="checks">${s.checks.map(([k, label]) =>
+        inner = `<div class="checks checks-1">${s.checks.map(([k, label]) =>
           `<label class="check"><input type="checkbox" name="begleitart_${k}"${r.data["begleitart_" + k] ? " checked" : ""}><span>${esc(label)}</span></label>`).join("")}</div>`;
       }
       if (s.groups) {
         inner = s.groups.map((g) => `<h4>${esc(g.sub)}</h4><div class="grid">${g.fields.map((fd) => fieldHtml(fd, r.data)).join("")}</div>`).join("");
       }
+      if (s.table) inner = kmTableHtml(r.data);
       return `<section class="card">${s.title ? `<h3>${esc(s.title)}</h3>` : ""}${inner}</section>`;
     }).join("");
 
@@ -216,11 +235,14 @@
     const el = e.target;
     if (!el.name) return;
     current.data[el.name] = el.type === "checkbox" ? el.checked : el.value;
-    if (el.name === "km_anfang" || el.name === "km_ende") {
-      const a = num(current.data.km_anfang), b = num(current.data.km_ende);
+
+    const m = el.name.match(/^km_(anfang|ende)_(\w+)$/);
+    if (m) {
+      const col = m[2];
+      const a = num(current.data[`km_anfang_${col}`]), b = num(current.data[`km_ende_${col}`]);
       const total = a !== null && b !== null ? String(Math.round((b - a) * 10) / 10).replace(".", ",") : "";
-      current.data.km_gesamt = total;
-      const out = $('[name="km_gesamt"]');
+      current.data[`km_gesamt_${col}`] = total;
+      const out = $(`[name="km_gesamt_${col}"]`);
       if (out) out.value = total;
     }
     if (el.name === "bemerkung") updateCount();
@@ -266,20 +288,22 @@
       templateBytes = await res.arrayBuffer();
     }
     const d = Object.assign({}, current.data);
-    d.transportdatum = fmtDate(d.transportdatum);
+    d.von_datum = fmtDate(d.von_datum);
+    d.nach_datum = fmtDate(d.nach_datum);
     const bytes = await WBPdf.buildPdf(PDFLib, templateBytes, d);
     const safe = (s) => clean(s).replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "");
-    const name = ["Begleitbericht", safe(current.data.best_nr), safe(fmtDate(current.data.transportdatum))].filter(Boolean).join("_") + ".pdf";
+    const name = ["Transportbegleitung", safe(current.data.auftragsnr), safe(fmtDate(current.data.von_datum))].filter(Boolean).join("_") + ".pdf";
     return new File([bytes], name, { type: "application/pdf" });
   }
 
   function mailParts() {
     const d = current.data;
-    const subject = CONFIG.title + (clean(d.best_nr) ? " - " + clean(d.best_nr) : "");
-    const begleit = SECTIONS[2].checks.filter(([k]) => d["begleitart_" + k]).map(([, l]) => l).join(", ");
+    const subject = CONFIG.title + (clean(d.auftragsnr) ? " - " + clean(d.auftragsnr) : "");
     const lines = [
-      ["Best. Nr.", d.best_nr], ["Transportdatum", fmtDate(d.transportdatum)], ["Fahrer", d.fahrer_1],
-      ["Kennzeichen", d.kennzeichen_1], ["Begleitart", begleit], ["Bemerkung", d.bemerkung],
+      ["Firma / Auftraggeber", d.firma], ["LKW-Kennzeichen", d.lkw_kennzeichen],
+      ["Von", [d.von_ort, fmtDate(d.von_datum), d.von_uhrzeit].filter(clean).join(", ")],
+      ["Nach", [d.nach_ort, fmtDate(d.nach_datum), d.nach_uhrzeit].filter(clean).join(", ")],
+      ["Auftragsnr.", d.auftragsnr], ["Bemerkung", d.bemerkung],
     ].filter(([, v]) => clean(v)).map(([k, v]) => `${k}: ${clean(v)}`);
     return { subject, body: lines.join("\n") + "\n\n(Das ausgefüllte Formular ist als PDF angehängt.)" };
   }

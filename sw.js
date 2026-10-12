@@ -1,7 +1,7 @@
 /* Service Worker: hält die App offline verfügbar.
  * Strategie "stale-while-revalidate": es wird immer sofort aus dem Cache geliefert
  * und im Hintergrund aktualisiert – Änderungen erscheinen beim nächsten Öffnen. */
-const CACHE = "begleitbericht-v1";
+const CACHE = "transportbegleitung-v2"; // Versionswechsel: altes Feldlayout (Begleitbericht) -> neues (Transportbegleitung)
 const ASSETS = [
   "./", "index.html", "style.css", "app.js", "pdf.js", "vendor/pdf-lib.min.js",
   "template.pdf", "manifest.webmanifest", "icon-192.png", "icon-512.png",

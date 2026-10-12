@@ -81,7 +81,32 @@ input:focus, textarea:focus { outline: none; border-color: var(--red); backgroun
 .computed input { background: #eaeaeb; color: var(--grey); font-weight: 700; }
 .count { font-size: 12px; color: var(--warn); text-align: right; }
 
+/* Präfix-Feld (amtl. Kennzeichen-Bezirk "SHA-WT") */
+.platewrap {
+  display: flex; align-items: center; min-height: 52px;
+  background: var(--field); border: 1.5px solid var(--line); border-radius: 10px; overflow: hidden;
+}
+.platewrap:focus-within { border-color: var(--red); background: #fff; box-shadow: 0 0 0 3px rgba(200,16,46,.15); }
+.plate { padding: 0 4px 0 12px; font-weight: 700; color: var(--dark); font-size: 18px; white-space: nowrap; }
+.platewrap input { flex: 1; min-width: 0; min-height: 52px; padding: 10px 12px 10px 4px; border: 0; background: transparent; }
+.platewrap input:focus { outline: none; border: 0; background: transparent; box-shadow: none; }
+
+/* Begleit-Kilometer-Tabelle */
+.kmtable { overflow-x: auto; margin-top: 4px; }
+.kmtable table { width: 100%; min-width: 540px; border-collapse: separate; border-spacing: 6px; }
+.kmtable th { font-size: 12.5px; font-weight: 700; text-transform: uppercase; color: var(--grey); padding: 2px 4px; }
+.kmtable th.rowlab { text-align: left; white-space: nowrap; color: var(--dark); font-size: 14px; text-transform: none; }
+.kmtable td input {
+  width: 100%; min-width: 68px; min-height: 48px; padding: 8px; text-align: center;
+  font: inherit; font-size: 17px; color: var(--dark);
+  background: var(--field); border: 1.5px solid var(--line); border-radius: 8px;
+}
+.kmtable td input:focus { outline: none; border-color: var(--red); background: #fff; box-shadow: 0 0 0 3px rgba(200,16,46,.15); }
+.kmtable td input.computed { background: #eaeaeb; color: var(--grey); font-weight: 700; }
+
 .checks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.checks-1 { grid-template-columns: 1fr; }
+.checks-1 .check { max-width: 340px; }
 .check { position: relative; display: block; }
 .check input { position: absolute; opacity: 0; inset: 0; width: 100%; height: 100%; margin: 0; }
 .check span {
