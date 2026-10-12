@@ -1,7 +1,8 @@
 /* Service Worker: hält die App offline verfügbar.
- * Strategie "stale-while-revalidate": es wird immer sofort aus dem Cache geliefert
- * und im Hintergrund aktualisiert – Änderungen erscheinen beim nächsten Öffnen. */
-const CACHE = "transportbegleitung-v2"; // Versionswechsel: altes Feldlayout (Begleitbericht) -> neues (Transportbegleitung)
+ * Strategie "network-first": bei Internet wird immer die aktuelle Version vom Server geholt
+ * (und im Hintergrund im Cache aktualisiert) – Änderungen erscheinen sofort beim nächsten Laden,
+ * ohne zweimaliges Neuladen. Nur ohne Internet greift der gespeicherte Stand. */
+const CACHE = "transportbegleitung-v3"; // Versionswechsel: Cache-Strategie auf "network-first" umgestellt
 const ASSETS = [
   "./", "index.html", "style.css", "app.js", "pdf.js", "vendor/pdf-lib.min.js",
   "template.pdf", "manifest.webmanifest", "icon-192.png", "icon-512.png",
@@ -24,12 +25,14 @@ self.addEventListener("fetch", (e) => {
   if (req.method !== "GET" || new URL(req.url).origin !== location.origin) return;
   e.respondWith(
     caches.open(CACHE).then(async (cache) => {
-      const cached = await cache.match(req, { ignoreSearch: true });
-      const network = fetch(req)
-        .then((res) => { if (res && res.ok) cache.put(req, res.clone()); return res; })
-        .catch(() => null);
-      if (cached) { e.waitUntil(network); return cached; }
-      return (await network) || (req.mode === "navigate" ? cache.match("index.html") : Response.error());
+      try {
+        const res = await fetch(req);
+        if (res && res.ok) cache.put(req, res.clone());
+        return res;
+      } catch (err) {
+        const cached = await cache.match(req, { ignoreSearch: true });
+        return cached || (req.mode === "navigate" ? cache.match("index.html") : Promise.reject(err));
+      }
     })
   );
 });
