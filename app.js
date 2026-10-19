@@ -1,13 +1,16 @@
 /* Transportbegleitung Wiedemann – Offline-App.
  * Berichte liegen im localStorage des Tablets und werden bei jeder Eingabe automatisch gespeichert.
- * "Senden" erzeugt das PDF im Gerät und übergibt es über das Android-Teilen-Menü (z. B. an Gmail). */
+ * "Senden" erzeugt das PDF im Gerät und schickt es direkt per E-Mail über unseren Server (Cloudflare
+ * Worker + Resend) – ohne Mail-App auf dem Tablet. Ohne Internet bleibt der Bericht in einer
+ * Warteschlange und wird automatisch nachgesendet, sobald wieder Netz da ist. */
 (function () {
   "use strict";
 
   const CONFIG = {
     title: "Transportbegleitung Wiedemann",
-    recipient: "david.groeschl@gmail.com", // nur für den Fallback (mailto:), Teilen-Menü kann keinen Empfänger vorgeben
-    version: "2.0",
+    apiUrl: "https://transportbegleitung-mail.david-groeschl.workers.dev/send",
+    apiToken: "f_4ZMiozdqpckuokDPbCFPrHtK4OqEDlMU9uguG7A08",
+    version: "3.1",
   };
   const KEY = "bb:report:";
   const REQUIRED = {
@@ -118,14 +121,16 @@
   }
   function newReport() {
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-    const r = { id, createdAt: Date.now(), updatedAt: Date.now(), sharedAt: null, data: { von_datum: today() } };
+    const r = { id, createdAt: Date.now(), updatedAt: Date.now(), sentAt: null, pendingSend: false, data: { von_datum: today() } };
     saveReport(r);
     return r;
   }
   function statusOf(r) {
-    if (!r.sharedAt) return { key: "draft", text: "Entwurf" };
-    if (r.updatedAt > r.sharedAt + 1000) return { key: "changed", text: "Geändert nach Senden" };
-    return { key: "shared", text: "Geteilt" };
+    const sentAt = r.sentAt || r.sharedAt || null; // r.sharedAt: Altlast aus Vorversion, falls noch vorhanden
+    if (r.pendingSend) return { key: "pending", text: "Wartet auf Versand" };
+    if (!sentAt) return { key: "draft", text: "Entwurf" };
+    if (r.updatedAt > sentAt + 1000) return { key: "changed", text: "Geändert nach Senden" };
+    return { key: "sent", text: "Gesendet" };
   }
 
   // ------------------------------------------------------------------ Liste
@@ -139,7 +144,10 @@
       const st = statusOf(r);
       const title = clean(d.auftragsnr) ? `Auftrag ${esc(d.auftragsnr)}` : (clean(d.firma) ? esc(d.firma) : "Ohne Auftragsnr.");
       const sub = [fmtDate(d.von_datum), clean(d.lkw_kennzeichen), clean(d.von_ort)].filter(Boolean).map(esc).join(" · ");
-      const when = st.key === "draft" ? `bearbeitet ${fmtDateTime(r.updatedAt)}` : `geteilt ${fmtDateTime(r.sharedAt)}`;
+      const sentAt = r.sentAt || r.sharedAt || null;
+      const when = st.key === "pending" ? `wartet auf Versand · zuletzt bearbeitet ${fmtDateTime(r.updatedAt)}`
+        : st.key === "draft" ? `bearbeitet ${fmtDateTime(r.updatedAt)}`
+        : `gesendet ${fmtDateTime(sentAt)}`;
       return `<a class="item" href="#/r/${r.id}"><span class="item-main"><b>${title}</b><span>${sub || "&nbsp;"}</span><small>${when}</small></span><span class="chip ${st.key}">${st.text}</span></a>`;
     }).join("");
 
@@ -151,7 +159,8 @@
         <h2>Meine Berichte</h2>
         ${rows || `<p class="empty">Noch keine Berichte. Tippe auf „Neuer Bericht“.</p>`}
         <p class="note">Berichte werden automatisch auf diesem Tablet gespeichert und bleiben erhalten, bis du sie löschst.
-        „Geteilt“ heißt: an Gmail übergeben. Ob die Mail versendet wurde, siehst du in Gmail (Postausgang/Gesendet).</p>
+        „Gesendet“ heißt: die E-Mail wurde über unseren Server verschickt. Ohne Internet bleibt ein Bericht auf
+        „Wartet auf Versand“ und wird automatisch nachgesendet, sobald wieder Netz da ist.</p>
       </section>`;
     $("#new").onclick = () => { const r = newReport(); location.hash = "#/r/" + r.id; };
     const inst = $("#install");
@@ -279,25 +288,24 @@
     el.textContent = saved ? `✓ Gespeichert ${fmtTime(current.updatedAt)} · ${st.text}` : "Speichert …";
   }
 
-  // ------------------------------------------------------------------ PDF / Senden
+  // ------------------------------------------------------------------ PDF
   let templateBytes = null;
-  async function makePdf() {
+  async function buildPdfFile(data) {
     if (!templateBytes) {
       const res = await fetch("template.pdf");
       if (!res.ok) throw new Error("Vorlage nicht gefunden (template.pdf)");
       templateBytes = await res.arrayBuffer();
     }
-    const d = Object.assign({}, current.data);
+    const d = Object.assign({}, data);
     d.von_datum = fmtDate(d.von_datum);
     d.nach_datum = fmtDate(d.nach_datum);
     const bytes = await WBPdf.buildPdf(PDFLib, templateBytes, d);
     const safe = (s) => clean(s).replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "");
-    const name = ["Transportbegleitung", safe(current.data.auftragsnr), safe(fmtDate(current.data.von_datum))].filter(Boolean).join("_") + ".pdf";
+    const name = ["Transportbegleitung", safe(data.auftragsnr), safe(fmtDate(data.von_datum))].filter(Boolean).join("_") + ".pdf";
     return new File([bytes], name, { type: "application/pdf" });
   }
 
-  function mailParts() {
-    const d = current.data;
+  function mailPartsFor(d) {
     const subject = CONFIG.title + (clean(d.auftragsnr) ? " - " + clean(d.auftragsnr) : "");
     const lines = [
       ["Firma / Auftraggeber", d.firma], ["LKW-Kennzeichen", d.lkw_kennzeichen],
@@ -308,10 +316,10 @@
     return { subject, body: lines.join("\n") + "\n\n(Das ausgefüllte Formular ist als PDF angehängt.)" };
   }
 
-  function setBusy(busy) {
+  function setBusy(busy, label) {
     ["send", "save-pdf"].forEach((id) => { const b = document.getElementById(id); if (b) b.disabled = busy; });
     const s = $("#send");
-    if (s) s.textContent = busy ? "Erstelle PDF …" : "Senden";
+    if (s) s.textContent = busy ? (label || "Bitte warten …") : "Senden";
   }
 
   function download(file) {
@@ -322,11 +330,45 @@
     setTimeout(() => URL.revokeObjectURL(url), 30000);
   }
 
+  function pdfError(e) {
+    console.error(e);
+    alert("Das PDF konnte nicht erstellt werden.\n\n" + (e && e.message ? e.message : e) + "\n\nDer Bericht ist trotzdem gespeichert.");
+  }
+
+  // ------------------------------------------------------------------ Senden (direkt per Server)
+  async function sendViaApi(file, subject, text) {
+    if (!CONFIG.apiUrl) throw new Error("not_configured");
+    const fd = new FormData();
+    fd.append("pdf", file, file.name);
+    fd.append("subject", subject);
+    fd.append("text", text);
+    fd.append("filename", file.name);
+
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 20000);
+    let res;
+    try {
+      res = await fetch(CONFIG.apiUrl, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${CONFIG.apiToken}` },
+        body: fd,
+        signal: ctrl.signal,
+      });
+    } catch (e) {
+      throw new Error(e && e.name === "AbortError" ? "timeout" : "network");
+    } finally {
+      clearTimeout(timer);
+    }
+    let data = null;
+    try { data = await res.json(); } catch (e) { /* ignorieren */ }
+    if (!res.ok || !data || !data.ok) throw new Error((data && data.error) || `http_${res.status}`);
+  }
+
   async function savePdf() {
     flushSave();
-    setBusy(true);
+    setBusy(true, "Erstelle PDF …");
     try {
-      const file = await makePdf();
+      const file = await buildPdfFile(current.data);
       download(file);
       toast("PDF gespeichert (Ordner „Downloads“).");
     } catch (e) { pdfError(e); } finally { setBusy(false); }
@@ -336,40 +378,69 @@
     flushSave();
     const missing = Object.keys(REQUIRED).filter((k) => !clean(current.data[k])).map((k) => REQUIRED[k]);
     if (missing.length && !confirm("Es fehlen noch Angaben:\n• " + missing.join("\n• ") + "\n\nTrotzdem senden?")) return;
-    setBusy(true);
+
+    setBusy(true, "Erstelle PDF …");
+    let file;
     try {
-      const file = await makePdf();
-      const { subject, body } = mailParts();
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        try {
-          await navigator.share({ files: [file], title: subject, text: body });
-          current.sharedAt = Date.now();
-          current.updatedAt = current.sharedAt;
-          saveReport(current, false);
-          updateStatus(true);
-          toast("An Gmail übergeben. Bitte dort noch „Senden“ tippen.", 6000);
-        } catch (e) {
-          if (e && e.name === "AbortError") toast("Abgebrochen. Der Bericht bleibt gespeichert.");
-          else throw e;
-        }
-      } else {
-        // Fallback (z. B. Desktop): PDF speichern und E-Mail-Entwurf öffnen, PDF muss angehängt werden
-        download(file);
-        toast("PDF gespeichert. Bitte in der E-Mail anhängen.", 7000);
-        setTimeout(() => {
-          location.href = `mailto:${CONFIG.recipient}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-        }, 800);
-      }
-    } catch (e) { pdfError(e); } finally { setBusy(false); }
+      file = await buildPdfFile(current.data);
+    } catch (e) { pdfError(e); setBusy(false); return; }
+
+    setBusy(true, "Sende …");
+    const { subject, body } = mailPartsFor(current.data);
+    try {
+      await sendViaApi(file, subject, body);
+      current.pendingSend = false;
+      current.sentAt = Date.now();
+      current.lastError = null;
+      current.updatedAt = current.sentAt;
+      saveReport(current, false);
+      updateStatus(true);
+      toast("Gesendet.");
+    } catch (e) {
+      console.warn("Senden fehlgeschlagen, wird automatisch erneut versucht:", e);
+      current.pendingSend = true;
+      current.lastError = (e && e.message) || "Fehler";
+      saveReport(current);
+      updateStatus(true);
+      toast(navigator.onLine ? "Senden hat nicht geklappt. Wird automatisch erneut versucht." : "Kein Internet. Wird automatisch gesendet, sobald wieder Netz da ist.", 6000);
+    } finally {
+      setBusy(false);
+    }
   }
 
-  function pdfError(e) {
-    console.error(e);
-    alert("Das PDF konnte nicht erstellt werden.\n\n" + (e && e.message ? e.message : e) + "\n\nDer Bericht ist trotzdem gespeichert.");
+  // Automatischer Nachversand für Berichte, die noch in der Warteschlange stehen.
+  let retrying = false;
+  async function retryPending() {
+    if (retrying || !navigator.onLine || !CONFIG.apiUrl) return;
+    retrying = true;
+    try {
+      const pending = loadAll().filter((r) => r.pendingSend);
+      for (const r of pending) {
+        const saved = loadOne(r.id); // neuester Stand, falls der Bericht zwischenzeitlich bearbeitet wurde
+        if (!saved || !saved.pendingSend) continue;
+        try {
+          const file = await buildPdfFile(saved.data);
+          const { subject, body } = mailPartsFor(saved.data);
+          await sendViaApi(file, subject, body);
+          saved.pendingSend = false;
+          saved.sentAt = Date.now();
+          saved.lastError = null;
+          saved.updatedAt = saved.sentAt;
+          saveReport(saved, false);
+          if (current && current.id === saved.id) { current = saved; updateStatus(true); }
+          if (!location.hash || location.hash === "#/") showList();
+        } catch (e) {
+          console.warn("Automatischer Versand fehlgeschlagen für", r.id, e);
+          // bleibt in der Warteschlange, nächster Versuch beim nächsten Online-Ereignis
+        }
+      }
+    } finally {
+      retrying = false;
+    }
   }
 
   function deleteReport() {
-    const unsent = statusOf(current).key !== "shared";
+    const unsent = statusOf(current).key !== "sent";
     const msg = (unsent ? "ACHTUNG: Dieser Bericht wurde noch nicht gesendet!\n\n" : "") + "Bericht wirklich löschen? Das kann nicht rückgängig gemacht werden.";
     if (!confirm(msg)) return;
     try { localStorage.removeItem(KEY + current.id); } catch (e) { /* ignorieren */ }
@@ -385,7 +456,10 @@
     window.scrollTo(0, 0);
   }
 
-  function updateOnline() { $("#offline").hidden = navigator.onLine; }
+  function updateOnline() {
+    $("#offline").hidden = navigator.onLine;
+    if (navigator.onLine) retryPending();
+  }
 
   window.addEventListener("hashchange", route);
   window.addEventListener("pagehide", flushSave);
@@ -394,6 +468,7 @@
   window.addEventListener("offline", updateOnline);
   window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installPrompt = e; if (!current) showList(); });
   window.addEventListener("appinstalled", () => { installPrompt = null; if (!current) showList(); });
+  setInterval(() => { if (navigator.onLine) retryPending(); }, 120000); // Sicherheitsnetz, falls ein Versuch leise durchrutscht
 
   $("#version").textContent = "v" + CONFIG.version;
   updateOnline();

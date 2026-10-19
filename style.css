@@ -58,8 +58,9 @@ main { max-width: 900px; margin: 0 auto; padding: 16px 16px 120px; }
 .item-main b { font-size: 18px; }
 .item-main small { color: var(--grey); }
 .chip { flex: none; border-radius: 99px; padding: 4px 12px; font-size: 14px; font-weight: 700; background: #e9e9ea; color: var(--grey); }
-.chip.shared { background: #dff2e5; color: var(--ok); }
+.chip.sent { background: #dff2e5; color: var(--ok); }
 .chip.changed { background: #fbe9cf; color: var(--warn); }
+.chip.pending { background: #e5f0fb; color: #1a5fb4; }
 .empty, .note { color: var(--grey); }
 .note { font-size: 14px; margin-top: 24px; }
 .banner.error { background: #fde7ea; color: #8c0b20; border: 1px solid #f3b6bf; padding: 12px 14px; border-radius: 10px; margin-bottom: 14px; font-weight: 700; }
