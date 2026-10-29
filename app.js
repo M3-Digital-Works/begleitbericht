@@ -18,7 +18,6 @@
     lkw_kennzeichen: "LKW-Kennzeichen",
     von_datum: "Datum",
     unterschrift_begleitfahrer: "Unterschrift Begleitfahrer",
-    unterschrift_transportfahrer: "Unterschrift Transport-Fahrer",
   };
   const PLATE_PREFIX = "SHA-WT";
   const KM_COLS = [["lkw", "LKW"], ["bf2", "BF2"], ["bf3", "BF3"], ["bf4", "BF4"]];
@@ -385,7 +384,10 @@
   async function send() {
     flushSave();
     const missing = Object.keys(REQUIRED).filter((k) => !clean(current.data[k])).map((k) => REQUIRED[k]);
-    if (missing.length && !confirm("Es fehlen noch Angaben:\n• " + missing.join("\n• ") + "\n\nTrotzdem senden?")) return;
+    if (missing.length) {
+      alert("Bitte zuerst ausfüllen, dann senden:\n• " + missing.join("\n• "));
+      return;
+    }
 
     setBusy(true, "Erstelle PDF …");
     let file;
