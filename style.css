@@ -97,6 +97,12 @@ input:focus, textarea:focus { outline: none; border-color: var(--red); backgroun
 .kmtable table { width: 100%; min-width: 540px; border-collapse: separate; border-spacing: 6px; }
 .kmtable th { font-size: 12.5px; font-weight: 700; text-transform: uppercase; color: var(--grey); padding: 2px 4px; }
 .kmtable th.rowlab { text-align: left; white-space: nowrap; color: var(--dark); font-size: 14px; text-transform: none; }
+.kmtable th .kmhead { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.kmtable select.kmselect {
+  font-family: inherit; font-size: 13px; font-weight: 700; text-transform: none; color: var(--dark);
+  padding: 3px 4px; border: 1.5px solid var(--line); border-radius: 6px; background: #fff; appearance: auto;
+}
+.kmtable select.kmselect:focus { outline: none; border-color: var(--red); box-shadow: 0 0 0 3px rgba(200,16,46,.15); }
 .kmtable td input {
   width: 100%; min-width: 68px; min-height: 48px; padding: 8px; text-align: center;
   font: inherit; font-size: 17px; color: var(--dark);

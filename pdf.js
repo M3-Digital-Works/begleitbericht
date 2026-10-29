@@ -40,7 +40,7 @@
   }
 
   async function buildPdf(PDFLib, templateBytes, data) {
-    const { PDFDocument, PDFTextField, PDFCheckBox, StandardFonts } = PDFLib;
+    const { PDFDocument, PDFTextField, PDFCheckBox, PDFDropdown, StandardFonts } = PDFLib;
     const doc = await PDFDocument.load(templateBytes, { updateMetadata: false });
     const font = await doc.embedFont(StandardFonts.Helvetica);
     const form = doc.getForm();
@@ -49,6 +49,11 @@
       const name = field.getName();
       if (field instanceof PDFCheckBox) {
         if (data[name]) field.check();
+        continue;
+      }
+      if (field instanceof PDFDropdown) {
+        const val = data[name];
+        if (val) { try { field.select(val); } catch (e) { /* Wert nicht in den Optionen, ignorieren */ } }
         continue;
       }
       if (!(field instanceof PDFTextField)) continue;

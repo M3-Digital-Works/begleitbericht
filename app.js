@@ -17,6 +17,7 @@
     firma: "Firma / Auftraggeber",
     lkw_kennzeichen: "LKW-Kennzeichen",
     von_datum: "Datum",
+    unterschrift_begleitfahrer: "Unterschrift Begleitfahrer",
     unterschrift_transportfahrer: "Unterschrift Transport-Fahrer",
   };
   const PLATE_PREFIX = "SHA-WT";
@@ -40,7 +41,7 @@
         f(`begleit_kennzeichen_${i}`, `Begleitfahrzeug ${i}`, { w: 4, n: 12, type: "plated", prefix: PLATE_PREFIX, cap: "characters" })
       ),
     },
-    { title: "Art der Begleitung", checks: [["transportbegleitung", "Transportbegleitung"]] },
+    { title: "Art der Begleitung", checks: [["transportbegleitung", "Transportbegleitung"], ["schilderdienst", "Schilderdienst"]] },
     {
       title: "Strecke",
       groups: [
@@ -191,7 +192,13 @@
       const v = data[name] == null ? "" : data[name];
       return `<td><input type="text" inputmode="numeric" autocomplete="off" name="${name}" value="${esc(v)}"${readonly ? " readonly tabindex=\"-1\" class=\"computed\"" : ""}></td>`;
     };
-    const head = KM_COLS.map(([, lab]) => `<th>${esc(lab)}</th>`).join("");
+    const head = KM_COLS.map(([key, lab]) => {
+      if (key === "lkw") return `<th>${esc(lab)}</th>`;
+      const name = `${key}_fahrzeug`;
+      const v = data[name] || "";
+      const opts = ["", "1", "2", "3"].map((o) => `<option value="${o}"${v === o ? " selected" : ""}>${o || "–"}</option>`).join("");
+      return `<th><span class="kmhead">${esc(lab)}<select name="${name}" class="kmselect" aria-label="Fahrzeug-Nr. für ${esc(lab)}">${opts}</select></span></th>`;
+    }).join("");
     const rows = KM_ROWS.map(([rk, rlab]) =>
       `<tr><th class="rowlab">${esc(rlab)}</th>${KM_COLS.map(([ck]) => cell(rk, ck, rk === "gesamt")).join("")}</tr>`
     ).join("");
@@ -208,7 +215,8 @@
       let inner = "";
       if (s.fields) inner = `<div class="grid">${s.fields.map((fd) => fieldHtml(fd, r.data)).join("")}</div>`;
       if (s.checks) {
-        inner = `<div class="checks checks-1">${s.checks.map(([k, label]) =>
+        const oneCheck = s.checks.length === 1;
+        inner = `<div class="checks${oneCheck ? " checks-1" : ""}">${s.checks.map(([k, label]) =>
           `<label class="check"><input type="checkbox" name="begleitart_${k}"${r.data["begleitart_" + k] ? " checked" : ""}><span>${esc(label)}</span></label>`).join("")}</div>`;
       }
       if (s.groups) {
